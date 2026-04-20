@@ -28,7 +28,7 @@ This project provides a script to convert a Debian system into a **fully automat
 ### 1️⃣ Download script
 
 ```bash
-wget https://raw.githubusercontent.com/magicminds-diptendu/debian-kiosk/main/setup_kiosk.sh
+wget https://raw.githubusercontent.com/magicminds-diptendu/debian-kiosk/main/kisok_setup.sh
 ```
 
 ---
@@ -36,7 +36,7 @@ wget https://raw.githubusercontent.com/magicminds-diptendu/debian-kiosk/main/set
 ### 2️⃣ Make executable
 
 ```bash
-chmod +x setup_kiosk.sh
+chmod +x kisok_setup.sh
 ```
 
 ---
@@ -55,7 +55,7 @@ sudo apt install adduser -y
 ### 4️⃣ Edit configuration (IMPORTANT)
 
 ```bash
-nano setup_kiosk.sh
+nano kisok_setup.sh
 ```
 
 Update:
@@ -74,7 +74,7 @@ Examples:
 ### 5️⃣ Run setup
 
 ```bash
-sudo ./setup_kiosk.sh
+sudo ./kisok_setup.sh
 ```
 
 ---
@@ -90,7 +90,7 @@ sudo reboot
 ## ⚡ One-line Install (Advanced)
 
 ```bash
-wget -O setup_kiosk.sh https://raw.githubusercontent.com/magicminds-diptendu/debian-kiosk/main/setup_kiosk.sh && chmod +x setup_kiosk.sh && sudo apt update && sudo apt install adduser -y && sudo ./setup_kiosk.sh
+wget -O kisok_setup.sh https://raw.githubusercontent.com/magicminds-diptendu/debian-kiosk/main/kisok_setup.sh && chmod +x kisok_setup.sh && sudo apt update && sudo apt install adduser -y && sudo ./kisok_setup.sh
 ```
 
 ---
@@ -159,7 +159,7 @@ AutomaticLogin = kiosk
 Re-run safely:
 
 ```bash
-sudo ./setup_kiosk.sh
+sudo ./kisok_setup.sh
 ```
 
 ---
@@ -168,7 +168,7 @@ sudo ./setup_kiosk.sh
 
 ```
 .
-├── setup_kiosk.sh
+├── kisok_setup.sh
 └── README.md
 ```
 
