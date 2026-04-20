@@ -25,17 +25,50 @@ apt update
 apt install -y firefox-esr unclutter
 
 # -------------------------------
-# 3. Enable auto login (GDM)
+# 3. Detect display manager
+# -------------------------------
+DM=$(cat /etc/X11/default-display-manager 2>/dev/null || echo "")
+
+echo "Detected display manager: $DM"
+
+# -------------------------------
+# 4. Configure auto login
 # -------------------------------
 echo "Configuring auto login..."
 
-GDM_CONF="/etc/gdm3/daemon.conf"
+if [[ "$DM" == *"gdm3"* ]]; then
+    echo "Using GDM..."
 
-sed -i 's/^#\?AutomaticLoginEnable.*/AutomaticLoginEnable = true/' $GDM_CONF
-sed -i "s/^#\?AutomaticLogin.*/AutomaticLogin = $KIOSK_USER/" $GDM_CONF
+    cat <<EOF > /etc/gdm3/daemon.conf
+[daemon]
+WaylandEnable=false
+AutomaticLoginEnable=true
+AutomaticLogin=$KIOSK_USER
+
+[security]
+
+[xdmcp]
+
+[chooser]
+
+[debug]
+EOF
+
+elif [[ "$DM" == *"lightdm"* ]]; then
+    echo "Using LightDM..."
+
+    cat <<EOF > /etc/lightdm/lightdm.conf
+[Seat:*]
+autologin-user=$KIOSK_USER
+autologin-session=gnome
+EOF
+
+else
+    echo "⚠️ Unknown display manager. Autologin not configured."
+fi
 
 # -------------------------------
-# 4. Create kiosk startup script
+# 5. Create kiosk startup script
 # -------------------------------
 echo "Creating kiosk startup script..."
 
@@ -49,26 +82,26 @@ xset s off
 xset -dpms
 xset s noblank
 
-# Apply GNOME settings (works ONLY inside session)
+# Apply GNOME settings (only works inside session)
 gsettings set org.gnome.desktop.screensaver lock-enabled false
 gsettings set org.gnome.desktop.session idle-delay 0
 gsettings set org.gnome.desktop.notifications show-banners false
 
-# Disable some escape shortcuts (ignore errors if missing)
+# Disable some shortcuts
 gsettings set org.gnome.settings-daemon.plugins.media-keys logout '' || true
 gsettings set org.gnome.settings-daemon.plugins.media-keys screensaver '' || true
 
-# Hide mouse cursor
+# Hide cursor
 unclutter -idle 2 &
 
-# Launch browser in kiosk mode
+# Launch browser
 firefox-esr --kiosk "$KIOSK_URL"
 EOF
 
 chmod +x /home/$KIOSK_USER/.local/bin/kiosk.sh
 
 # -------------------------------
-# 5. Autostart config
+# 6. Autostart config
 # -------------------------------
 echo "Setting autostart..."
 
@@ -85,12 +118,12 @@ Name=Kiosk
 EOF
 
 # -------------------------------
-# 6. Permissions
+# 7. Permissions
 # -------------------------------
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
 
 # -------------------------------
-# 7. Optional Hardening
+# 8. Optional Hardening
 # -------------------------------
 echo "Applying optional hardening..."
 
