@@ -28,7 +28,7 @@ This project provides a script to convert a Debian system into a **fully automat
 ### 1️⃣ Download script
 
 ```bash
-wget https://raw.githubusercontent.com/magicminds-diptendu/debian-kiosk/main/kisok_setup.sh
+wget https://raw.githubusercontent.com/hex09mighty/debian-kiosk/main/kisok_setup.sh
 ```
 
 ---
@@ -90,7 +90,7 @@ sudo reboot
 ## ⚡ One-line Install (Advanced)
 
 ```bash
-wget -O kisok_setup.sh https://raw.githubusercontent.com/magicminds-diptendu/debian-kiosk/main/kisok_setup.sh && chmod +x kisok_setup.sh && sudo apt update && sudo apt install adduser -y && sudo ./kisok_setup.sh
+wget -O kisok_setup.sh https://raw.githubusercontent.com/hex09mighty/debian-kiosk/main/kisok_setup.sh && chmod +x kisok_setup.sh && sudo apt update && sudo apt install adduser -y && sudo ./kisok_setup.sh
 ```
 
 ---
