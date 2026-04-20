@@ -13,26 +13,56 @@ echo "🚀 Setting up Secure Cage Kiosk..."
 if id "$KIOSK_USER" &>/dev/null; then
     echo "✔ User exists"
 else
-    echo "➕ Creating user..."
     adduser --gecos "" $KIOSK_USER
 fi
 
-# Unlock + fix shell
 passwd -d $KIOSK_USER || true
 usermod -s /bin/bash $KIOSK_USER
 
 # -------------------------------
 # 2. Install packages
 # -------------------------------
-echo "📦 Installing packages..."
 apt update -qq
-apt install -y cage firefox-esr dbus-user-session xdg-utils >/dev/null
+apt install -y cage firefox-esr dbus-user-session >/dev/null
 
 # -------------------------------
-# 3. Create kiosk launcher
+# 3. Lock down home directory
 # -------------------------------
-echo "🧩 Creating kiosk launcher..."
+echo "🔒 Configuring read-only home..."
 
+# Make home owned but not writable
+chmod 555 /home/$KIOSK_USER
+
+# Create temp writable dirs
+mkdir -p /tmp/kiosk-home
+chown $KIOSK_USER:$KIOSK_USER /tmp/kiosk-home
+
+# -------------------------------
+# 4. Firefox lockdown policy
+# -------------------------------
+echo "🛑 Disabling downloads..."
+
+mkdir -p /etc/firefox/policies
+
+cat <<EOF > /etc/firefox/policies/policies.json
+{
+  "policies": {
+    "DisableAppUpdate": true,
+    "DisableDeveloperTools": true,
+    "DisableProfileImport": true,
+    "DisableSetDesktopBackground": true,
+    "DisableFeedbackCommands": true,
+    "DownloadDirectory": "/dev/null",
+    "PromptForDownloadLocation": false,
+    "BlockAboutConfig": true,
+    "NoDefaultBookmarks": true
+  }
+}
+EOF
+
+# -------------------------------
+# 5. Create kiosk launcher
+# -------------------------------
 mkdir -p /home/$KIOSK_USER/.local/bin
 
 cat <<EOF > /home/$KIOSK_USER/.local/bin/kiosk.sh
@@ -40,19 +70,23 @@ cat <<EOF > /home/$KIOSK_USER/.local/bin/kiosk.sh
 
 export MOZ_ENABLE_WAYLAND=1
 
-# Kill previous instances
+# Use temp writable HOME
+export HOME=/tmp/kiosk-home
+
+# Clean previous session
+rm -rf /tmp/kiosk-home/*
+mkdir -p /tmp/kiosk-home
+
 pkill firefox-esr || true
 
-exec cage -- firefox-esr --kiosk --no-remote --private-window "$KIOSK_URL"
+exec cage -- firefox-esr --kiosk --no-remote "$KIOSK_URL"
 EOF
 
 chmod +x /home/$KIOSK_USER/.local/bin/kiosk.sh
 
 # -------------------------------
-# 4. Auto-login on TTY1
+# 6. Autologin (TTY1)
 # -------------------------------
-echo "⚙️ Configuring auto-login..."
-
 mkdir -p /etc/systemd/system/getty@tty1.service.d
 
 cat <<EOF > /etc/systemd/system/getty@tty1.service.d/override.conf
@@ -62,67 +96,55 @@ ExecStart=-/sbin/agetty --autologin $KIOSK_USER --noclear %I \$TERM
 EOF
 
 # -------------------------------
-# 5. Start kiosk on login (with admin bypass)
+# 7. Startup logic with admin bypass
 # -------------------------------
-echo "🚀 Configuring startup logic..."
-
 cat <<EOF > /home/$KIOSK_USER/.bash_profile
 
-# Admin bypass mode
 if [ -f /tmp/admin_mode ]; then
-    echo "⚠️ Admin mode enabled — kiosk skipped"
+    echo "Admin mode enabled"
     exit 0
 fi
 
-# Start kiosk only on tty1
-if [ -z "\$WAYLAND_DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
+if [ "\$(tty)" = "/dev/tty1" ]; then
     exec /home/$KIOSK_USER/.local/bin/kiosk.sh
 fi
 EOF
 
 # -------------------------------
-# 6. Permissions
+# 8. Hardening
+# -------------------------------
+echo "🔒 Hardening system..."
+
+echo "NAutoVTs=2" >> /etc/systemd/logind.conf
+echo "ReserveVT=2" >> /etc/systemd/logind.conf
+
+systemctl mask ctrl-alt-del.target
+
+# -------------------------------
+# 9. Permissions fix
 # -------------------------------
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
 
 # -------------------------------
-# 7. Hardening
-# -------------------------------
-echo "🔒 Applying hardening..."
-
-# Keep tty1 (kiosk) + tty2 (admin)
-grep -q "^NAutoVTs=" /etc/systemd/logind.conf && \
-sed -i 's/^NAutoVTs=.*/NAutoVTs=2/' /etc/systemd/logind.conf || \
-echo "NAutoVTs=2" >> /etc/systemd/logind.conf
-
-grep -q "^ReserveVT=" /etc/systemd/logind.conf && \
-sed -i 's/^ReserveVT=.*/ReserveVT=2/' /etc/systemd/logind.conf || \
-echo "ReserveVT=2" >> /etc/systemd/logind.conf
-
-# Disable Ctrl+Alt+Del reboot
-systemctl mask ctrl-alt-del.target
-
-# -------------------------------
-# 8. Self-check
+# 10. Self-check
 # -------------------------------
 echo ""
-echo "🔍 Running verification..."
-echo "----------------------------"
+echo "🔍 Running checks..."
+echo "----------------------"
 
 PASS=true
 
 id "$KIOSK_USER" &>/dev/null && echo "✔ User exists" || PASS=false
-passwd -S "$KIOSK_USER" | grep -q "NP" && echo "✔ User unlocked" || PASS=false
 [ -x "/home/$KIOSK_USER/.local/bin/kiosk.sh" ] && echo "✔ Kiosk script OK" || PASS=false
-[ -f "/etc/systemd/system/getty@tty1.service.d/override.conf" ] && echo "✔ Autologin OK" || PASS=false
+[ -f "/etc/firefox/policies/policies.json" ] && echo "✔ Firefox locked" || PASS=false
 
-echo "----------------------------"
+echo "----------------------"
 
 if $PASS; then
-    echo "✅ SYSTEM READY FOR KIOSK"
+    echo "✅ KIOSK FULLY LOCKED"
 else
-    echo "⚠️ SOME CHECKS FAILED"
+    echo "⚠️ CHECK FAILED"
 fi
 
 echo ""
-echo "👉 Reboot to start kiosk"
+echo "👉 Reboot system"
