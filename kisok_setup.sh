@@ -16,19 +16,19 @@ else
     adduser --gecos "" $KIOSK_USER
 fi
 
-# Unlock + shell
+# Unlock + ensure shell
 passwd -d $KIOSK_USER || true
 usermod -s /bin/bash $KIOSK_USER
 
 # -------------------------------
-# 2. Install packages (system-wide OK)
+# 2. Install packages
 # -------------------------------
 echo "📦 Installing packages..."
 apt update -qq
 apt install -y cage firefox-esr dbus-user-session >/dev/null
 
 # -------------------------------
-# 3. Create kiosk launcher (USER ONLY)
+# 3. Create kiosk launcher
 # -------------------------------
 echo "🧩 Creating kiosk launcher..."
 
@@ -48,6 +48,7 @@ while true; do
         --new-instance \
         "$KIOSK_URL"
 
+    echo "Restarting browser..."
     sleep 2
 done
 EOF
@@ -59,19 +60,18 @@ chmod +x /home/$KIOSK_USER/.local/bin/kiosk.sh
 # -------------------------------
 echo "🔒 Applying browser restrictions..."
 
-# Create profile dir safely
-sudo -u $KIOSK_USER mkdir -p /home/$KIOSK_USER/.mozilla/firefox
+# Create profile directory properly
+mkdir -p /home/$KIOSK_USER/.mozilla/firefox
+chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER/.mozilla
 
-# Create user-level policies via autoconfig
-mkdir -p /home/$KIOSK_USER/.mozilla/firefox/default
-
+# Create user.js (browser restrictions)
 cat <<EOF > /home/$KIOSK_USER/.mozilla/firefox/user.js
 // Disable downloads
 user_pref("browser.download.useDownloadDir", true);
 user_pref("browser.download.dir", "/home/$KIOSK_USER/blocked");
 user_pref("browser.helperApps.neverAsk.saveToDisk", "application/octet-stream");
 
-// Disable file picker (uploads)
+// Disable uploads (file picker)
 user_pref("dom.disable_open_during_load", true);
 
 // Disable devtools
@@ -81,7 +81,7 @@ user_pref("devtools.enabled", false);
 user_pref("general.config.obscure_value", 0);
 EOF
 
-# Create blocked dir
+# Blocked download directory
 mkdir -p /home/$KIOSK_USER/blocked
 chmod 000 /home/$KIOSK_USER/blocked
 
@@ -89,7 +89,7 @@ chmod 000 /home/$KIOSK_USER/blocked
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
 
 # -------------------------------
-# 5. Auto-login (system level)
+# 5. Auto-login (TTY1)
 # -------------------------------
 echo "⚙️ Configuring autologin..."
 
@@ -102,7 +102,7 @@ ExecStart=-/sbin/agetty --autologin $KIOSK_USER --noclear %I \$TERM
 EOF
 
 # -------------------------------
-# 6. Start kiosk on login (USER ONLY)
+# 6. Startup logic (user only)
 # -------------------------------
 echo "🚀 Configuring startup..."
 
@@ -110,20 +110,22 @@ cat <<EOF > /home/$KIOSK_USER/.bash_profile
 
 # Admin bypass
 if [ -f /tmp/admin_mode ]; then
+    echo "Admin mode enabled"
     exit 0
 fi
 
+# Start kiosk only on tty1
 if [ "\$(tty)" = "/dev/tty1" ]; then
     exec /home/$KIOSK_USER/.local/bin/kiosk.sh
 fi
 EOF
 
 # -------------------------------
-# 7. Hardening (safe, not user-specific)
+# 7. System hardening (safe)
 # -------------------------------
 echo "🔒 Applying system hardening..."
 
-# Keep tty2 for admin
+# Keep tty1 (kiosk) + tty2 (admin)
 grep -q "^NAutoVTs=" /etc/systemd/logind.conf && \
 sed -i 's/^NAutoVTs=.*/NAutoVTs=2/' /etc/systemd/logind.conf || \
 echo "NAutoVTs=2" >> /etc/systemd/logind.conf
