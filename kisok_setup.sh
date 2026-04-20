@@ -56,15 +56,19 @@ EOF
 chmod +x /home/$KIOSK_USER/.local/bin/kiosk.sh
 
 # -------------------------------
-# 4. Firefox restrictions (USER ONLY)
+# 4. Browser restrictions (USER ONLY)
 # -------------------------------
 echo "🔒 Applying browser restrictions..."
 
-# Create profile directory properly
+# 🔥 SELF-HEALING PERMISSIONS
+chmod 755 /home/$KIOSK_USER
+chown $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
+
+# Create Firefox profile safely
 mkdir -p /home/$KIOSK_USER/.mozilla/firefox
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER/.mozilla
 
-# Create user.js (browser restrictions)
+# Create user.js restrictions
 cat <<EOF > /home/$KIOSK_USER/.mozilla/firefox/user.js
 // Disable downloads
 user_pref("browser.download.useDownloadDir", true);
@@ -81,7 +85,7 @@ user_pref("devtools.enabled", false);
 user_pref("general.config.obscure_value", 0);
 EOF
 
-# Blocked download directory
+# Block downloads directory
 mkdir -p /home/$KIOSK_USER/blocked
 chmod 000 /home/$KIOSK_USER/blocked
 
@@ -102,7 +106,7 @@ ExecStart=-/sbin/agetty --autologin $KIOSK_USER --noclear %I \$TERM
 EOF
 
 # -------------------------------
-# 6. Startup logic (user only)
+# 6. Startup logic (USER ONLY)
 # -------------------------------
 echo "🚀 Configuring startup..."
 
