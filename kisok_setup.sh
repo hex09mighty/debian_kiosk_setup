@@ -22,7 +22,7 @@ fi
 # -------------------------------
 echo "Installing packages..."
 apt update
-apt install -y firefox-esr unclutter
+apt install -y firefox-esr unclutter dbus-x11
 
 # -------------------------------
 # 3. Enable auto login (GDM)
@@ -78,29 +78,48 @@ EOF
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
 
 # -------------------------------
-# 7. Disable lock screen & idle
+# 7. Configure GNOME settings
 # -------------------------------
 echo "Configuring GNOME settings..."
 
-sudo -u $KIOSK_USER dbus-launch gsettings set org.gnome.desktop.screensaver lock-enabled false
-sudo -u $KIOSK_USER dbus-launch gsettings set org.gnome.desktop.session idle-delay 0
-sudo -u $KIOSK_USER dbus-launch gsettings set org.gnome.desktop.notifications show-banners false
+USER_ID=$(id -u $KIOSK_USER)
+export XDG_RUNTIME_DIR=/run/user/$USER_ID
+
+sudo -u $KIOSK_USER XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+gsettings set org.gnome.desktop.screensaver lock-enabled false || true
+
+sudo -u $KIOSK_USER XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+gsettings set org.gnome.desktop.session idle-delay 0 || true
+
+sudo -u $KIOSK_USER XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+gsettings set org.gnome.desktop.notifications show-banners false || true
+
+# Disable common escape shortcuts
+sudo -u $KIOSK_USER XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+gsettings set org.gnome.settings-daemon.plugins.media-keys logout '' || true
+
+sudo -u $KIOSK_USER XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+gsettings set org.gnome.settings-daemon.plugins.media-keys terminal '' || true
+
+sudo -u $KIOSK_USER XDG_RUNTIME_DIR=$XDG_RUNTIME_DIR \
+gsettings set org.gnome.settings-daemon.plugins.media-keys screensaver '' || true
 
 # -------------------------------
-# 8. Disable common escape shortcuts
-# -------------------------------
-sudo -u $KIOSK_USER dbus-launch gsettings set org.gnome.settings-daemon.plugins.media-keys logout ''
-sudo -u $KIOSK_USER dbus-launch gsettings set org.gnome.settings-daemon.plugins.media-keys terminal ''
-sudo -u $KIOSK_USER dbus-launch gsettings set org.gnome.settings-daemon.plugins.media-keys screensaver ''
-
-# -------------------------------
-# 9. Optional Hardening
+# 8. Optional Hardening
 # -------------------------------
 echo "Applying optional hardening..."
 
 # Disable TTY switching
 sed -i 's/^#NAutoVTs=.*/NAutoVTs=0/' /etc/systemd/logind.conf || true
 sed -i 's/^#ReserveVT=.*/ReserveVT=0/' /etc/systemd/logind.conf || true
+
+# Disable Ctrl+Alt+Backspace (Xorg kill)
+mkdir -p /etc/X11/xorg.conf.d
+cat <<EOF > /etc/X11/xorg.conf.d/00-disable-ctrl-alt-backspace.conf
+Section "ServerFlags"
+    Option "DontZap" "true"
+EndSection
+EOF
 
 # -------------------------------
 # DONE
