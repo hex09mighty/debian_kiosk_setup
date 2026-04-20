@@ -5,72 +5,37 @@ set -e
 KIOSK_USER="agent"
 KIOSK_URL="https://google.com"
 
-echo "🚀 Starting Kiosk Setup..."
+echo "🚀 Setting up CAGE Wayland Kiosk..."
 
 # -------------------------------
 # 1. Create kiosk user
 # -------------------------------
 if id "$KIOSK_USER" &>/dev/null; then
-    echo "✔ User $KIOSK_USER already exists"
+    echo "✔ User exists"
 else
-    echo "➕ Creating user $KIOSK_USER..."
+    echo "➕ Creating user..."
     adduser --gecos "" $KIOSK_USER
 fi
 
-# Ensure correct shell
+# Unlock user
+passwd -d $KIOSK_USER || true
 usermod -s /bin/bash $KIOSK_USER
 
-# Unlock user if locked
-if passwd -S $KIOSK_USER | grep -q " L "; then
-    echo "🔓 Unlocking user..."
-    passwd -d $KIOSK_USER
-else
-    echo "✔ User already unlocked"
-fi
-
 # -------------------------------
-# 2. Install packages
+# 2. Install minimal packages
 # -------------------------------
 echo "📦 Installing packages..."
-apt update -qq
-apt install -y firefox-esr unclutter >/dev/null
+
+apt update
+apt install -y \
+    cage \
+    firefox-esr \
+    dbus-user-session \
+    xdg-utils \
+    systemd-sysv
 
 # -------------------------------
-# 3. Detect display manager
-# -------------------------------
-DM=$(cat /etc/X11/default-display-manager 2>/dev/null || echo "")
-echo "🖥 Detected display manager: $DM"
-
-# -------------------------------
-# 4. Configure auto login
-# -------------------------------
-echo "⚙️ Configuring auto login..."
-
-if [[ "$DM" == *"gdm3"* ]]; then
-    echo "→ Using GDM"
-
-    cat <<EOF > /etc/gdm3/daemon.conf
-[daemon]
-WaylandEnable=false
-AutomaticLoginEnable=true
-AutomaticLogin=$KIOSK_USER
-EOF
-
-elif [[ "$DM" == *"lightdm"* ]]; then
-    echo "→ Using LightDM"
-
-    cat <<EOF > /etc/lightdm/lightdm.conf
-[Seat:*]
-autologin-user=$KIOSK_USER
-autologin-session=gnome
-EOF
-
-else
-    echo "⚠️ Unknown display manager"
-fi
-
-# -------------------------------
-# 5. Create kiosk script
+# 3. Create kiosk launcher
 # -------------------------------
 echo "🧩 Creating kiosk launcher..."
 
@@ -79,125 +44,85 @@ mkdir -p /home/$KIOSK_USER/.local/bin
 cat <<EOF > /home/$KIOSK_USER/.local/bin/kiosk.sh
 #!/bin/bash
 
-sleep 2
+export MOZ_ENABLE_WAYLAND=1
 
+# Kill old instances
 pkill firefox-esr || true
 
-xset s off
-xset -dpms
-xset s noblank
-
-gsettings set org.gnome.desktop.screensaver lock-enabled false
-gsettings set org.gnome.desktop.session idle-delay 0
-gsettings set org.gnome.desktop.notifications show-banners false
-gsettings set org.gnome.desktop.interface enable-hot-corners false
-
-gsettings set org.gnome.settings-daemon.plugins.media-keys logout '' || true
-gsettings set org.gnome.settings-daemon.plugins.media-keys screensaver '' || true
-
-unclutter -idle 2 &
-
-firefox-esr --kiosk --no-remote --private-window "$KIOSK_URL"
+exec cage -- firefox-esr --kiosk --private-window "$KIOSK_URL"
 EOF
 
 chmod +x /home/$KIOSK_USER/.local/bin/kiosk.sh
 
 # -------------------------------
-# 6. Autostart
+# 4. Create systemd autologin service
 # -------------------------------
-echo "🚀 Configuring autostart..."
+echo "⚙️ Configuring auto-login (TTY)..."
 
-mkdir -p /home/$KIOSK_USER/.config/autostart
+mkdir -p /etc/systemd/system/getty@tty1.service.d
 
-cat <<EOF > /home/$KIOSK_USER/.config/autostart/kiosk.desktop
-[Desktop Entry]
-Type=Application
-Exec=/home/$KIOSK_USER/.local/bin/kiosk.sh
-X-GNOME-Autostart-enabled=true
-Name=Kiosk
+cat <<EOF > /etc/systemd/system/getty@tty1.service.d/override.conf
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin $KIOSK_USER --noclear %I \$TERM
 EOF
 
 # -------------------------------
-# 7. Permissions
+# 5. Auto start kiosk on login
+# -------------------------------
+echo "🚀 Configuring auto start..."
+
+cat <<EOF >> /home/$KIOSK_USER/.bash_profile
+
+# Start kiosk automatically
+if [ -z "\$WAYLAND_DISPLAY" ] && [ "\$(tty)" = "/dev/tty1" ]; then
+    exec /home/$KIOSK_USER/.local/bin/kiosk.sh
+fi
+EOF
+
+# -------------------------------
+# 6. Permissions
 # -------------------------------
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
 
 # -------------------------------
-# 8. Hardening
+# 7. Hardening
 # -------------------------------
 echo "🔒 Applying hardening..."
 
+# Disable VT switching
 grep -q "^NAutoVTs=" /etc/systemd/logind.conf && \
-sed -i 's/^NAutoVTs=.*/NAutoVTs=0/' /etc/systemd/logind.conf || \
-echo "NAutoVTs=0" >> /etc/systemd/logind.conf
+sed -i 's/^NAutoVTs=.*/NAutoVTs=1/' /etc/systemd/logind.conf || \
+echo "NAutoVTs=1" >> /etc/systemd/logind.conf
 
 grep -q "^ReserveVT=" /etc/systemd/logind.conf && \
-sed -i 's/^ReserveVT=.*/ReserveVT=0/' /etc/systemd/logind.conf || \
-echo "ReserveVT=0" >> /etc/systemd/logind.conf
+sed -i 's/^ReserveVT=.*/ReserveVT=1/' /etc/systemd/logind.conf || \
+echo "ReserveVT=1" >> /etc/systemd/logind.conf
 
-mkdir -p /etc/X11/xorg.conf.d
-cat <<EOF > /etc/X11/xorg.conf.d/00-disable-ctrl-alt-backspace.conf
-Section "ServerFlags"
-    Option "DontZap" "true"
-EndSection
-EOF
+# Disable Ctrl+Alt+Del reboot
+systemctl mask ctrl-alt-del.target
 
 # -------------------------------
-# 9. VERIFICATION
+# 8. Self-check
 # -------------------------------
 echo ""
-echo "🔍 Running self-checks..."
-echo "--------------------------------"
+echo "🔍 Running checks..."
+echo "--------------------------"
 
 PASS=true
 
-# Check user
-if id "$KIOSK_USER" &>/dev/null; then
-    echo "✔ User exists"
-else
-    echo "❌ User missing"
-    PASS=false
-fi
+id "$KIOSK_USER" &>/dev/null && echo "✔ User exists" || PASS=false
+passwd -S "$KIOSK_USER" | grep -q "NP" && echo "✔ User unlocked" || PASS=false
+[ -x "/home/$KIOSK_USER/.local/bin/kiosk.sh" ] && echo "✔ Kiosk script OK" || PASS=false
+systemctl is-enabled getty@tty1 &>/dev/null && echo "✔ Autologin configured" || PASS=false
 
-# Check unlocked
-if passwd -S $KIOSK_USER | grep -q "NP"; then
-    echo "✔ User unlocked"
-else
-    echo "❌ User still locked"
-    PASS=false
-fi
-
-# Check autologin config
-if grep -q "AutomaticLogin=$KIOSK_USER" /etc/gdm3/daemon.conf 2>/dev/null; then
-    echo "✔ Autologin configured"
-else
-    echo "❌ Autologin not configured"
-    PASS=false
-fi
-
-# Check kiosk script
-if [ -x "/home/$KIOSK_USER/.local/bin/kiosk.sh" ]; then
-    echo "✔ Kiosk script OK"
-else
-    echo "❌ Kiosk script missing"
-    PASS=false
-fi
-
-# Check autostart
-if [ -f "/home/$KIOSK_USER/.config/autostart/kiosk.desktop" ]; then
-    echo "✔ Autostart configured"
-else
-    echo "❌ Autostart missing"
-    PASS=false
-fi
-
-echo "--------------------------------"
+echo "--------------------------"
 
 if $PASS; then
-    echo "✅ ALL CHECKS PASSED"
+    echo "✅ READY FOR KIOSK MODE"
 else
-    echo "⚠️ SOME CHECKS FAILED"
+    echo "⚠️ CHECK FAILED"
 fi
 
 echo ""
-echo "👉 Reboot your system to apply changes"
+echo "👉 Reboot system"
