@@ -14,8 +14,12 @@ if id "$KIOSK_USER" &>/dev/null; then
     echo "User $KIOSK_USER already exists"
 else
     echo "Creating user $KIOSK_USER..."
-    adduser --disabled-password --gecos "" $KIOSK_USER
+    adduser --gecos "" $KIOSK_USER
 fi
+
+# 🔑 IMPORTANT: unlock user (fixes autologin)
+echo "Unlocking kiosk user..."
+passwd -d $KIOSK_USER
 
 # -------------------------------
 # 2. Install packages
@@ -28,7 +32,6 @@ apt install -y firefox-esr unclutter
 # 3. Detect display manager
 # -------------------------------
 DM=$(cat /etc/X11/default-display-manager 2>/dev/null || echo "")
-
 echo "Detected display manager: $DM"
 
 # -------------------------------
@@ -82,7 +85,7 @@ xset s off
 xset -dpms
 xset s noblank
 
-# Apply GNOME settings (only works inside session)
+# Apply GNOME settings
 gsettings set org.gnome.desktop.screensaver lock-enabled false
 gsettings set org.gnome.desktop.session idle-delay 0
 gsettings set org.gnome.desktop.notifications show-banners false
@@ -127,11 +130,9 @@ chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
 # -------------------------------
 echo "Applying optional hardening..."
 
-# Disable TTY switching
 sed -i 's/^#NAutoVTs=.*/NAutoVTs=0/' /etc/systemd/logind.conf || true
 sed -i 's/^#ReserveVT=.*/ReserveVT=0/' /etc/systemd/logind.conf || true
 
-# Disable Ctrl+Alt+Backspace
 mkdir -p /etc/X11/xorg.conf.d
 cat <<EOF > /etc/X11/xorg.conf.d/00-disable-ctrl-alt-backspace.conf
 Section "ServerFlags"
