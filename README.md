@@ -1,39 +1,68 @@
-# 🖥️ Debian Kiosk Setup
+# 🖥️ Debian Kiosk Setup (Cage + Firefox)
 
-This project provides a script to convert a Debian system into a **fully automated kiosk mode** using Firefox.
-
----
-
-## 🚀 Features
-
-* Auto login with dedicated `kiosk` user
-* Firefox launches in fullscreen (`--kiosk`)
-* Disable screen lock & idle timeout
-* Hide mouse cursor (idle)
-* Minimal GNOME-based kiosk setup
-* Basic system hardening
+This script configures a **secure, browser-only kiosk system** on Debian.
 
 ---
 
-## 📦 Requirements
+# 🚀 What This Script Does
 
-* Debian 12 / 13 with GNOME
+After running the script:
+
+### 👤 Kiosk User (`agent`)
+
+* Auto-login on boot (TTY1)
+* Runs **Firefox in full-screen kiosk mode**
+* No desktop environment (no GNOME, no apps)
+* No access to:
+
+  * Terminal
+  * File Manager
+  * App Center
+* Downloads disabled
+* Uploads disabled
+* Browser auto-restarts if closed
+
+### 👨‍💻 Admin User
+
+* Full system access (no restrictions)
+* Can switch via TTY
+
+---
+
+# 🧱 Architecture
+
+```text
+Boot
+ → TTY1 auto-login (agent)
+ → Cage (Wayland kiosk compositor)
+ → Firefox (kiosk mode)
+```
+
+👉 No GNOME / no desktop → nothing to escape into
+
+This follows best practice for kiosk systems, where **desktop environments are avoided to reduce attack surface** ([willhaley.com][1])
+
+---
+
+# 📦 Requirements
+
+* Debian 12 / 13 (minimal install recommended)
+* sudo/root access
 * Internet connection
-* Root / sudo access
 
 ---
 
-## ⚡ Quick Install (Recommended)
+# ⚙️ Installation
 
-### 1️⃣ Download script
+## 1. Download script
 
 ```bash
-wget https://raw.githubusercontent.com/hex09mighty/debian_kiosk_setup/main/kisok_setup.sh
+wget https://raw.githubusercontent.com/hex09mighty/debian_kiosk_setup/refs/heads/main/kisok_setup.sh
 ```
 
 ---
 
-### 2️⃣ Make executable
+## 2. Make executable
 
 ```bash
 chmod +x kisok_setup.sh
@@ -41,37 +70,7 @@ chmod +x kisok_setup.sh
 
 ---
 
-### 3️⃣ Fix missing dependency (IMPORTANT)
-
-Some minimal Debian installs don’t include `adduser`.
-
-```bash
-sudo apt update
-sudo apt install adduser -y
-```
-
----
-
-### 4️⃣ Edit configuration (IMPORTANT)
-
-```bash
-nano kisok_setup.sh
-```
-
-Update:
-
-```bash
-KIOSK_URL="https://your-url.com"
-```
-
-Examples:
-
-* Local app → `http://localhost:3000`
-* Website → `https://example.com`
-
----
-
-### 5️⃣ Run setup
+## 3. Run script
 
 ```bash
 sudo ./kisok_setup.sh
@@ -79,7 +78,7 @@ sudo ./kisok_setup.sh
 
 ---
 
-### 6️⃣ Reboot
+## 4. Reboot
 
 ```bash
 sudo reboot
@@ -87,96 +86,12 @@ sudo reboot
 
 ---
 
-## ⚡ One-line Install (Advanced)
+# 🔁 After Reboot
 
-```bash
-wget -O kisok_setup.sh https://raw.githubusercontent.com/hex09mighty/debian_kiosk_setup/main/kisok_setup.sh && chmod +x kisok_setup.sh && sudo apt update && sudo apt install adduser -y && sudo ./kisok_setup.sh
-```
-
----
-
-## ✅ Expected Behavior
-
-After reboot:
-
-* System auto logs into `kiosk` user
-* GNOME starts automatically
-* Firefox opens in fullscreen kiosk mode
-* No lock screen or sleep
+* System logs in automatically as `agent`
+* Browser opens full screen
+* User cannot exit or access system
 
 ---
-
-## 🔐 Optional Hardening
-
-You can extend security with:
-
-* Disable TTY switching
-* Disable USB ports
-* Restrict terminal access
-* Disable keyboard shortcuts (Alt+Tab, Ctrl+Alt+Fx)
-* BIOS / bootloader password
-
----
-
-## 🧠 Troubleshooting
-
-### ❌ `adduser: command not found`
-
-```bash
-sudo apt update
-sudo apt install adduser -y
-```
-
----
-
-### ❌ Firefox not opening
-
-```bash
-journalctl -xe
-```
-
----
-
-### ❌ Auto login not working
-
-Check:
-
-```bash
-sudo nano /etc/gdm3/daemon.conf
-```
-
-Ensure:
-
-```ini
-AutomaticLoginEnable = true
-AutomaticLogin = kiosk
-```
-
----
-
-### ❌ Script failed midway
-
-Re-run safely:
-
-```bash
-sudo ./kisok_setup.sh
-```
-
----
-
-## 📁 Project Structure
-
-```
-.
-├── kisok_setup.sh
-└── README.md
-```
-
----
-
-## ⚠️ Notes
-
-* This is a **functional kiosk setup**, not fully hardened
-* For production use, apply additional security controls
-
----
+[1]: https://www.willhaley.com/blog/debian-fullscreen-gui-kiosk/ "https://www.willhaley.com/blog/debian-fullscreen-gui-kiosk/"
+[2]: https://github.com/josfaber/debian-kiosk-installer "https://github.com/josfaber/debian-kiosk-installer"
