@@ -27,46 +27,16 @@ apt update -qq
 apt install -y cage firefox-esr dbus-user-session >/dev/null
 
 # -------------------------------
-# 3. Create kiosk launcher
-# -------------------------------
-echo "🧩 Creating kiosk launcher..."
-
-mkdir -p /home/$KIOSK_USER/.local/bin
-
-cat <<EOF > /home/$KIOSK_USER/.local/bin/kiosk.sh
-#!/bin/bash
-
-export MOZ_ENABLE_WAYLAND=1
-
-pkill firefox-esr || true
-
-while true; do
-    firefox-esr \
-        --kiosk \
-        --no-remote \
-        --new-instance \
-        "$KIOSK_URL"
-
-    sleep 2
-done
-EOF
-
-chmod +x /home/$KIOSK_USER/.local/bin/kiosk.sh
-
-# -------------------------------
-# 4. Browser restrictions (USER ONLY)
+# 3. Browser restrictions (USER ONLY)
 # -------------------------------
 echo "🔒 Applying browser restrictions..."
 
-# Fix permissions (self-healing)
 chmod 755 /home/$KIOSK_USER
 chown $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
 
-# Firefox profile
 mkdir -p /home/$KIOSK_USER/.mozilla/firefox
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER/.mozilla
 
-# Firefox restrictions
 cat <<EOF > /home/$KIOSK_USER/.mozilla/firefox/user.js
 user_pref("browser.download.useDownloadDir", true);
 user_pref("browser.download.dir", "/home/$KIOSK_USER/blocked");
@@ -81,7 +51,7 @@ chmod 000 /home/$KIOSK_USER/blocked
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER
 
 # -------------------------------
-# 5. Restrict available commands (USER ONLY)
+# 4. Restrict available commands
 # -------------------------------
 echo "🚫 Restricting system access for kiosk user..."
 
@@ -95,7 +65,7 @@ ln -sf /usr/bin/sleep /home/$KIOSK_USER/restricted-bin/
 chown -R $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER/restricted-bin
 
 # -------------------------------
-# 6. Auto-login (TTY1)
+# 5. Auto-login (TTY1)
 # -------------------------------
 echo "⚙️ Configuring autologin..."
 
@@ -108,7 +78,7 @@ ExecStart=-/sbin/agetty --autologin $KIOSK_USER --noclear %I \$TERM
 EOF
 
 # -------------------------------
-# 7. Startup logic (USER ONLY)
+# 6. Startup logic (NO launcher)
 # -------------------------------
 echo "🚀 Configuring startup..."
 
@@ -120,19 +90,19 @@ if [ -f /tmp/admin_mode ]; then
     exit 0
 fi
 
-# Restrict PATH (VERY IMPORTANT)
+# Restrict PATH
 export PATH=/home/$KIOSK_USER/restricted-bin
 
-# Start kiosk only on tty1
+# Start Firefox directly on tty1
 if [ "\$(tty)" = "/dev/tty1" ]; then
-    exec /home/$KIOSK_USER/.local/bin/kiosk.sh
+    exec cage firefox-esr --kiosk "$KIOSK_URL"
 fi
 EOF
 
 chown $KIOSK_USER:$KIOSK_USER /home/$KIOSK_USER/.bash_profile
 
 # -------------------------------
-# 8. System hardening (safe)
+# 7. System hardening
 # -------------------------------
 echo "🔒 Applying system hardening..."
 
@@ -147,7 +117,7 @@ echo "ReserveVT=2" >> /etc/systemd/logind.conf
 systemctl mask ctrl-alt-del.target
 
 # -------------------------------
-# 9. SELF CHECK
+# 8. SELF CHECK
 # -------------------------------
 echo ""
 echo "🔍 Running verification..."
@@ -156,14 +126,13 @@ echo "----------------------------"
 PASS=true
 
 id "$KIOSK_USER" &>/dev/null && echo "✔ User exists" || PASS=false
-[ -x "/home/$KIOSK_USER/.local/bin/kiosk.sh" ] && echo "✔ Kiosk script OK" || PASS=false
 [ -d "/home/$KIOSK_USER/restricted-bin" ] && echo "✔ Commands restricted" || PASS=false
 [ -f "/home/$KIOSK_USER/.mozilla/firefox/user.js" ] && echo "✔ Browser restricted" || PASS=false
 
 echo "----------------------------"
 
 if $PASS; then
-    echo "✅ KIOSK READY (fully locked for agent)"
+    echo "✅ KIOSK READY (no launcher mode)"
 else
     echo "⚠️ CHECK FAILED"
 fi
